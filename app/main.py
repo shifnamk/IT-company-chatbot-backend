@@ -12,7 +12,7 @@ app = FastAPI()
 # CORS setup (allow frontend to connect)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # You can replace * with your domain later
+    allow_origins=["*"],  # In production, specify allowed frontend domains
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -21,15 +21,13 @@ app.add_middleware(
 # Path to model
 model_path = os.path.join(os.path.dirname(__file__), "model", "tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf")
 
-# Google Drive direct download link
-# ❗ Replace YOUR_FILE_ID with your actual Google Drive file ID
-model_download_url = "https://www.dropbox.com/scl/fi/d7gbpkz385t58y5wm8wqu/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf?rlkey=uzqxm8o0u8jxq49op01aamldb&st=rmkwdeli&dl=1"
+# Dropbox download link (make sure ?dl=1 for direct download)
+model_download_url = "https://www.dropbox.com/scl/fi/d7gbpkz385t58y5wm8wqu/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf?rlkey=uzqxm8o0u8jxq49op01aamldb&dl=1"
 
-
-# Function to download the model if it doesn't exist
+# Function to download model if missing
 def download_model():
     if not os.path.exists(model_path):
-        print("Model not found. Downloading from Google Drive...")
+        print("Model not found. Downloading...")
         os.makedirs(os.path.dirname(model_path), exist_ok=True)
         response = requests.get(model_download_url, stream=True)
         if response.status_code == 200:
@@ -38,9 +36,9 @@ def download_model():
                     f.write(chunk)
             print("Model downloaded successfully.")
         else:
-            print(f"Failed to download model. Status code: {response.status_code}")
+            raise Exception(f"Failed to download model. Status code: {response.status_code}")
 
-# Download model if missing
+# Ensure model is available
 download_model()
 
 # Load Llama model
@@ -50,11 +48,12 @@ llm = Llama(
     n_threads=8,
 )
 
-print("Llama model loaded successfully!")
+print("✅ Llama model loaded successfully!")
 
-# Static content scraped from website
+# Static website data
 website_data = get_website_content()
 
+# Request body schema
 class QueryRequest(BaseModel):
     message: str
 
@@ -63,84 +62,69 @@ class QueryRequest(BaseModel):
 def read_root():
     return {"message": "Welcome to Nova Tech Solutions chatbot backend! 🚀"}
 
-# Chatbot route
+# Chat route
 @app.post("/chat")
 def chat(request: QueryRequest):
     user_message = request.message.lower().strip()
     print(f"Received message: {user_message}")
 
-    # Check for greetings and respond accordingly
-    if "hello" in user_message or "hi" in user_message or "hey" in user_message:
+    # Static FAQ-like responses
+    if any(word in user_message for word in ["hello", "hi", "hey"]):
         return {"response": "Hello! 👋 How can I assist you today?"}
 
-    # General services response
     if "services" in user_message:
-        return {"response": "We offer a variety of services designed to elevate your business: Web Development, AI Integration, Mobile App Development, UI/UX Design, Cloud Solutions, and Digital Marketing. Feel free to ask about any specific service!"}
-    
-    # Elaborate on specific services if requested
+        return {"response": "We offer Web Development, AI Integration, Mobile App Development, UI/UX Design, Cloud Solutions, and Digital Marketing. Ask about any!"}
+
     if "web development" in user_message:
-        return {"response": "Our web development team builds responsive, fast, and modern websites to help elevate your brand. We focus on user-friendly design and seamless performance."}
-    
-    elif "ai integration" in user_message:
-        return {"response": "We integrate AI into your business processes to help automate tasks, improve efficiency, and drive innovation."}
-    
-    elif "mobile app development" in user_message:
-        return {"response": "We offer custom mobile app development solutions for both iOS and Android platforms, tailored to meet your specific business needs."}
-    
-    elif "ui/ux design" in user_message:
-        return {"response": "Our UI/UX design team focuses on creating user-centered designs that ensure a seamless and engaging experience for your customers."}
-    
-    elif "cloud solutions" in user_message:
-        return {"response": "We provide scalable cloud services to support your business growth, ensuring your operations are smooth and secure in the cloud."}
-    
-    elif "digital marketing" in user_message:
-        return {"response": "We help promote your brand through effective digital marketing strategies, including SEO, social media, and online campaigns."}
+        return {"response": "We build modern, responsive websites tailored to your business needs."}
 
-    # Check if the message matches known categories first
-    elif "mission" in user_message or "about" in user_message:
-        return {"response": "At Nova Tech Solutions, our mission is to deliver innovative and secure IT solutions that empower businesses to succeed and grow in an ever-evolving digital landscape."}
-    
-    elif "contact" in user_message or "support" in user_message:
-        return {"response": website_data["contact_info"]}
+    if "ai integration" in user_message:
+        return {"response": "We integrate AI technologies to automate, optimize, and innovate your business operations."}
 
-    # Refined response for HR/mission-related queries
-    elif "hr" in user_message or "mission statement" in user_message:
-        return {"response": "At Nova Tech Solutions, our mission is to deliver innovative and secure IT solutions that empower businesses to succeed and grow in an ever-evolving digital landscape."}
-    
-    else:
-        # If no match, use Llama model with improved prompt
-        prompt = f"""
+    if "mobile app" in user_message:
+        return {"response": "We develop mobile apps for iOS and Android with a focus on performance and user experience."}
+
+    if "ui/ux" in user_message:
+        return {"response": "Our UI/UX experts create beautiful and intuitive designs to maximize user satisfaction."}
+
+    if "cloud" in user_message:
+        return {"response": "We provide scalable cloud computing solutions to future-proof your business."}
+
+    if "digital marketing" in user_message:
+        return {"response": "We boost your online presence with SEO, social media, and strategic digital campaigns."}
+
+    if "mission" in user_message or "about" in user_message:
+        return {"response": "Our mission is to deliver secure, innovative IT solutions that empower businesses in the digital era."}
+
+    if "contact" in user_message or "support" in user_message:
+        return {"response": website_data.get("contact_info", "You can reach us via our Contact page.")}
+
+    # Otherwise, use Llama model to generate an answer
+    prompt = f"""
 You are a professional assistant for Nova Tech Solutions.
-Answer in a clear, confident, and professional tone, ensuring the response is polite and informative.
-Only answer if the user's question is about Nova Tech Solutions' services, products, support, or careers.
-Otherwise, politely say: "I'm sorry, I can only answer questions about Nova Tech Solutions."
-
-Examples:
-
-User: "What services do you offer?"
-Assistant: "We offer a range of services including IT consulting, software development, cloud solutions, and technical support."
-
-User: "What is your mission statement?"
-Assistant: "At Nova Tech Solutions, our mission is to deliver innovative and secure IT solutions that empower businesses to succeed and grow in an ever-evolving digital landscape."
-
-Now answer:
+Answer clearly, confidently, and politely. Only discuss Nova Tech Solutions' services, products, careers, or support.
 
 User: "{request.message}"
 Assistant:
 """
 
-        try:
-            output = llm(
-                prompt=prompt,
-                temperature=0.2,
-                max_tokens=180,
-                stop=["User:", "Assistant:"]
-            )
-            response_text = output["choices"][0]["text"].strip()
+    try:
+        output = llm(
+            prompt=prompt,
+            temperature=0.2,
+            max_tokens=180,
+            stop=["User:", "Assistant:"]
+        )
+        response_text = output["choices"][0]["text"].strip()
+        print(f"Generated response: {response_text}")
+        return {"response": response_text}
+    
+    except Exception as e:
+        print(f"Error: {e}")
+        return {"response": "Sorry, something went wrong. Please try again later."}
 
-            print(f"Generated response: {response_text}")
-            return {"response": response_text}
-
-        except Exception as e:
-            print(f"Error: {e}")
-            return {"response": "Sorry, something went wrong. Please try again later."}
+# --- VERY IMPORTANT: Start server correctly ---
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", 10000))  # Use Render's dynamic port, default 10000 for local
+    uvicorn.run(app, host="0.0.0.0", port=port)
