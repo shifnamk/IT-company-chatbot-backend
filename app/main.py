@@ -23,7 +23,8 @@ model_path = os.path.join(os.path.dirname(__file__), "model", "tinyllama-1.1b-ch
 
 # Google Drive direct download link
 # ❗ Replace YOUR_FILE_ID with your actual Google Drive file ID
-model_download_url = "https://drive.google.com/uc?export=download&id=1jRN4EBzmui1RNieP1crTuSCv70aB9d1b"
+model_download_url = "https://www.dropbox.com/scl/fi/d7gbpkz385t58y5wm8wqu/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf?rlkey=uzqxm8o0u8jxq49op01aamldb&st=rmkwdeli&dl=1"
+
 
 # Function to download the model if it doesn't exist
 def download_model():
