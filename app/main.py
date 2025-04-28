@@ -1,12 +1,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from llama_cpp import Llama
 import os
-import requests
-import asyncio
+from scraping import get_website_content
 
-# Initialize app
 app = FastAPI()
 
 app.add_middleware(
@@ -17,80 +14,68 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Model path
-model_path = os.path.join(os.path.dirname(__file__), "model", "tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf")
+# (Model loading kept for showing purpose, but not really used)
+try:
+    from llama_cpp import Llama
+    model_path = os.path.join(os.path.dirname(__file__), "model", "tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf")
+    llm = Llama(model_path=model_path, n_ctx=2048, n_threads=8)
+    print("✅ Llama model loaded successfully!")
+except Exception as e:
+    print(f"⚠️ Warning: Model not loaded: {e}")
+    llm = None
 
-# Download model if missing
-def download_model():
-    if not os.path.exists(model_path):
-        print("Model not found. Downloading...")
-        os.makedirs(os.path.dirname(model_path), exist_ok=True)
-        url = "https://www.dropbox.com/scl/fi/d7gbpkz385t58y5wm8wqu/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf?rlkey=uzqxm8o0u8jxq49op01aamldb&st=rmkwdeli&dl=1"
-        r = requests.get(url, stream=True)
-        if r.status_code == 200:
-            with open(model_path, 'wb') as f:
-                for chunk in r.iter_content(chunk_size=8192):
-                    f.write(chunk)
-            print("✅ Model downloaded successfully.")
-        else:
-            print("❌ Failed to download model.")
+website_data = get_website_content()
 
-download_model()
-
-# Load model
-llm = Llama(
-    model_path=model_path,
-    n_ctx=1024,
-    n_threads=8,
-)
-print("✅ Llama model loaded successfully!")
-
-# Request body
 class QueryRequest(BaseModel):
     message: str
 
 @app.get("/")
-async def read_root():
-    return {"message": "Welcome to NovaTech chatbot!"}
+def read_root():
+    return {"message": "Welcome to Nova Tech Solutions chatbot backend! 🚀"}
 
 @app.post("/chat")
-async def chat(request: QueryRequest):
+def chat(request: QueryRequest):
     user_message = request.message.lower().strip()
-    print(f"📥 User sent: {user_message}")
+    print(f"Received: {user_message}")
 
-    # Quick static replies
-    if any(word in user_message for word in ["hello", "hi", "hey"]):
+    # Static simple logic for important questions
+    if any(keyword in user_message for keyword in ["hello", "hi", "hey"]):
         return {"response": "Hello! 👋 How can I assist you today?"}
+
     if "services" in user_message:
-        return {"response": "We offer Web Development, AI, Mobile Apps, Cloud Solutions, and Digital Marketing!"}
+        return {"response": "We offer Web Development, AI Integration, Mobile App Development, UI/UX Design, Cloud Solutions, and Digital Marketing. Feel free to ask more!"}
 
-    # Model-based reply for everything else
-    prompt = f"""
-You are NovaTech's AI Assistant. Help users about NovaTech Solutions.
-Answer only about services, careers, company info.
-If question unrelated, say: "Sorry, I can only answer about NovaTech Solutions."
+    if "web development" in user_message:
+        return {"response": "Our web development team builds modern, responsive websites tailored to your business needs."}
 
-User: {request.message}
-Assistant:
-"""
-    try:
-        # Use timeout to prevent server crash
-        response = await asyncio.wait_for(run_model(prompt), timeout=30)
-        return {"response": response}
-    except asyncio.TimeoutError:
-        print("⚠️ Model took too long.")
-        return {"response": "Sorry, the server is busy. Please try again."}
-    except Exception as e:
-        print(f"❌ Model error: {e}")
-        return {"response": "Sorry, something went wrong. Please try again later."}
+    if "ai integration" in user_message:
+        return {"response": "We specialize in integrating AI solutions to automate workflows and boost efficiency."}
 
-async def run_model(prompt):
-    output = llm(
-        prompt=prompt,
-        temperature=0.3,
-        max_tokens=150,
-        stop=["User:", "Assistant:"]
-    )
-    response_text = output["choices"][0]["text"].strip()
-    print(f"✅ Model replied: {response_text}")
-    return response_text
+    if "mobile app development" in user_message:
+        return {"response": "We create custom mobile apps for Android and iOS, delivering great user experience and performance."}
+
+    if "ui/ux design" in user_message:
+        return {"response": "Our UI/UX experts design intuitive, user-centered interfaces that engage your customers."}
+
+    if "cloud solutions" in user_message:
+        return {"response": "We offer scalable and secure cloud computing services to help you grow your business."}
+
+    if "digital marketing" in user_message:
+        return {"response": "We help grow your brand through SEO, PPC advertising, social media marketing, and more."}
+
+    if "mission" in user_message or "about" in user_message:
+        return {"response": "At Nova Tech Solutions, we deliver innovative and secure IT solutions that empower businesses to succeed."}
+
+    if "contact" in user_message or "support" in user_message:
+        return {"response": website_data.get("contact_info", "You can reach us via the contact form on our website.")}
+
+    if "hr" in user_message or "openings" in user_message:
+        return {"response": "Thank you for your interest! Please check the Careers page on our website for any current openings."}
+
+    # Default fallback for unknown questions
+    return {"response": "Thank you for your query! A representative will get back to you soon with more information. 🚀"}
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 7860))
+    import uvicorn
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
