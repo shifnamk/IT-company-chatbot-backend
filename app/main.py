@@ -4,27 +4,23 @@ from pydantic import BaseModel
 from llama_cpp import Llama
 import os
 import requests
-from scraping import get_website_content  # Import your scraping function
+import asyncio
+from scraping import get_website_content
 
-# Initialize FastAPI app
 app = FastAPI()
 
-# CORS setup (allow frontend to connect)
+# CORS settings
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins for now
+    allow_origins=["*"],  
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Paths
 model_path = os.path.join(os.path.dirname(__file__), "model", "tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf")
-
-# Model download URL (Dropbox direct link)
 model_download_url = "https://www.dropbox.com/scl/fi/d7gbpkz385t58y5wm8wqu/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf?rlkey=uzqxm8o0u8jxq49op01aamldb&st=rmkwdeli&dl=1"
 
-# Download model if not found
 def download_model():
     if not os.path.exists(model_path):
         print("Model not found. Downloading...")
@@ -36,82 +32,84 @@ def download_model():
                     f.write(chunk)
             print("✅ Model downloaded successfully.")
         else:
-            print(f"❌ Failed to download model. Status code: {response.status_code}")
+            print(f"Failed to download model. Status code: {response.status_code}")
 
-# Call download function
+# Ensure model is present
 download_model()
 
-# Load model
+# Load model (optimized settings)
 llm = Llama(
     model_path=model_path,
-    n_ctx=2048,
-    n_threads=8,
+    n_ctx=1024,     # ✅ Smaller context (save memory)
+    n_threads=4,    # ✅ Fewer threads (avoid CPU overload)
+    n_batch=128,    # ✅ Optional: reduce batch size
 )
 
 print("✅ Llama model loaded successfully!")
 
-# Scrape website content
 website_data = get_website_content()
 
-# Define request model
 class QueryRequest(BaseModel):
     message: str
 
-# Home route
 @app.get("/")
-def home():
-    return {"message": "NovaTech Chatbot API running!"}
+def read_root():
+    return {"message": "Welcome to Nova Tech Solutions chatbot backend!"}
 
-# Chat endpoint
 @app.post("/chat")
-def chat(request: QueryRequest):
+async def chat(request: QueryRequest):
     user_message = request.message.lower().strip()
     print(f"📥 Received: {user_message}")
 
-    # --- Hardcoded shortcut responses ---
-    if "hello" in user_message or "hi" in user_message or "hey" in user_message:
+    # Static responses
+    if any(word in user_message for word in ["hello", "hi", "hey"]):
         return {"response": "Hello! 👋 How can I assist you today?"}
-    
+
     if "services" in user_message:
-        return {"response": "We offer services like Web Development, AI Integration, Mobile App Development, UI/UX Design, Cloud Solutions, and Digital Marketing. Feel free to ask about any specific service!"}
+        return {"response": "We offer a variety of services designed to elevate your business: Web Development, AI Integration, Mobile App Development, UI/UX Design, Cloud Solutions, and Digital Marketing."}
+
+    if "web development" in user_message:
+        return {"response": "Our web development team builds modern, responsive websites with a focus on performance and user experience."}
+
+    if "ai integration" in user_message:
+        return {"response": "We specialize in integrating AI solutions to automate and optimize business operations."}
+
+    if "mission" in user_message or "about" in user_message:
+        return {"response": "At Nova Tech Solutions, our mission is to deliver innovative IT solutions that empower businesses to grow."}
 
     if "contact" in user_message or "support" in user_message:
-        return {"response": website_data.get("contact_info", "Please visit our Contact page for support.")}
+        return {"response": website_data.get("contact_info", "You can contact us via email or our website contact form.")}
 
-    # --- Now let the Llama model answer ---
+    # 🔥 If no static reply, use model
     prompt = f"""
-You are an intelligent, professional chatbot working for NovaTech Solutions.
-
-✅ You must answer ONLY questions related to:
-- Company services
-- Mission and Vision
-- Job openings or Careers
-- Contact Information
-
-❌ If the question is unrelated, reply politely: "I'm sorry, I can only assist with questions about NovaTech Solutions."
-
-Here are examples:
-User: What services do you offer?
-Assistant: We offer Web Development, AI Integration, Mobile App Development, UI/UX Design, Cloud Solutions, and Digital Marketing.
-
-User: Are there any current openings?
-Assistant: We are always looking for talented individuals. Please visit our Careers page or contact HR for current opportunities.
+You are a professional assistant for Nova Tech Solutions.
+Answer clearly, politely, and only about Nova Tech services or jobs.
 
 User: {request.message}
 Assistant:
 """
 
     try:
-        output = llm(
-            prompt=prompt,
-            temperature=0.3,
-            max_tokens=250,   # Allow model enough space to generate
-            stop=["User:", "Assistant:"]
-        )
-        response_text = output["choices"][0]["text"].strip()
-        print(f"📤 Model Response: {response_text}")
-        return {"response": response_text}
+        # Add timeout to avoid infinite model hangs
+        response = await asyncio.wait_for(run_model(prompt), timeout=25.0)
+        return {"response": response}
+
+    except asyncio.TimeoutError:
+        print("⚠️ Model response timed out!")
+        return {"response": "Sorry, my brain took too long to think! Please try again."}
 
     except Exception as e:
-        print(f"❌ Error: {e}")
-        return {"response": "Sorry, something went wrong. Please try again later."}
+        print(f"❌ Model Error: {e}")
+        return {"response": "Sorry, something went wrong internally. Please try again later."}
+
+# Separate function to call model
+async def run_model(prompt):
+    output = llm(
+        prompt=prompt,
+        temperature=0.2,
+        max_tokens=180,
+        stop=["User:", "Assistant:"]
+    )
+    response_text = output["choices"][0]["text"].strip()
+    print(f"✅ Model replied: {response_text}")
+    return response_text
